@@ -71,7 +71,7 @@ class TistaOrderDownloaderApp(ctk.CTk):
 
         lbl_input = ctk.CTkLabel(
             input_header, 
-            text="Tista Order URLs / Order IDs / Card Links (One per line):",
+            text="Tista Order URLs / Server Paths / Dropbox Transfer Links (One per line):",
             font=ctk.CTkFont(size=13, weight="bold")
         )
         lbl_input.pack(side="left")
@@ -99,9 +99,15 @@ class TistaOrderDownloaderApp(ctk.CTk):
         btn_clear.pack(side="right", padx=(6, 0))
 
         # Text input area
-        self.txt_orders = ctk.CTkTextbox(input_container, height=95, corner_radius=8, font=("Consolas", 12))
+        self.txt_orders = ctk.CTkTextbox(input_container, height=105, corner_radius=8, font=("Consolas", 12))
         self.txt_orders.pack(fill="x", padx=16, pady=4)
-        self.txt_orders.insert("1.0", "https://tista.app/order/5291401183317/#454758\n#452996 Cutout Edge\n#453005 Cutout Edge")
+        self.txt_orders.insert(
+            "1.0",
+            "https://tista.app/order/5291401183317/#454758\n"
+            "Server - \\order\\5291401183317\\#454758\n"
+            "#452996 Cutout Edge\n"
+            "#453005 Cutout Edge"
+        )
 
         # Destination & settings row
         settings_frame = ctk.CTkFrame(input_container, fg_color="transparent")
@@ -147,7 +153,7 @@ class TistaOrderDownloaderApp(ctk.CTk):
         # Placeholder message
         self.lbl_empty = ctk.CTkLabel(
             self.scroll_orders, 
-            text="Enter Tista Order URLs or Order IDs above and click 'Analyze Tista Cards'.\nThe app will extract the 'Open files in Dropbox' button and 'Completed links' automatically.",
+            text="Enter Tista Order URLs, Server paths, or Order IDs above and click 'Analyze Tista Cards'.\nThe app will extract the 'Open files in Dropbox' button and 'Completed links' automatically.",
             text_color="#64748b",
             font=ctk.CTkFont(size=13)
         )
@@ -204,7 +210,13 @@ class TistaOrderDownloaderApp(ctk.CTk):
 
     def _load_sample_orders(self):
         self.txt_orders.delete("1.0", "end")
-        self.txt_orders.insert("1.0", "https://tista.app/order/5291401183317/#454758\n#452996 Cutout Edge\n#453005 Cutout Edge")
+        self.txt_orders.insert(
+            "1.0",
+            "https://tista.app/order/5291401183317/#454758\n"
+            "Server - \\order\\5291401183317\\#454758\n"
+            "#452996 Cutout Edge\n"
+            "#453005 Cutout Edge"
+        )
 
     def _clear_input(self):
         self.txt_orders.delete("1.0", "end")
@@ -217,7 +229,7 @@ class TistaOrderDownloaderApp(ctk.CTk):
             messagebox.showinfo("Folder Path", f"Target folder does not exist yet:\n{path}")
 
     # ==========================================
-    # STEP 1: TISTA CARD EXTRACTION & ANALYSIS
+    # STEP 1: ROBUST TISTA & DROPBOX PARSER
     # ==========================================
     def _parse_input_tokens(self):
         text = self.txt_orders.get("1.0", "end").strip()
@@ -227,31 +239,47 @@ class TistaOrderDownloaderApp(ctk.CTk):
         default_vendor = self.entry_vendor.get().strip() or "Pixel Path"
 
         for line in lines:
-            order_m = re.search(r"#?(\d{5,7})", line)
-            url_m = re.search(r"(https?://[^\s]+)", line, re.I)
-            
+            # 1. Vendor detection
             vendor = default_vendor
             if re.search(r"cutout\s*edge", line, re.I): vendor = "Cutout Edge"
             elif re.search(r"alpha\s*edit", line, re.I): vendor = "Alpha Edit Studio"
             elif re.search(r"precision", line, re.I): vendor = "Precision Retouch"
             elif re.search(r"pixel\s*path", line, re.I): vendor = "Pixel Path"
 
-            tista_url = ""
+            # 2. Extract Client ID (typically 10-15 digits after /order/ or standalone)
+            m_client = re.search(r'[/\\\\]order[/\\\\](\d{10,15})', line) or re.search(r'\b(\d{12,15})\b', line)
+            client_id = m_client.group(1) if m_client else ""
+
+            # 3. Extract Order ID:
+            # Prioritize #454758 explicitly!
+            m_order = re.search(r'#(\d{5,7})', line)
+            if not m_order:
+                # If no # prefix, find 5 to 7 digits that do NOT match the client_id
+                for m in re.finditer(r'\b(\d{5,7})\b', line):
+                    if m.group(1) != client_id:
+                        m_order = m
+                        break
+
+            # 4. Extract URLs
+            m_url = re.search(r'(https?://[^\s]+)', line)
+            found_url = m_url.group(1) if m_url else ""
+            
             dropbox_url = ""
+            tista_url = ""
+            if "dropbox.com" in found_url:
+                dropbox_url = found_url
+            elif "tista.app" in found_url:
+                tista_url = found_url
 
-            if url_m:
-                found_url = url_m.group(1)
-                if "dropbox.com" in found_url:
-                    dropbox_url = found_url
-                else:
-                    tista_url = found_url
-
-            if order_m:
+            if m_order:
+                clean_id = m_order.group(1)
                 orders_to_scan.append({
-                    "order_id": f"#{order_m.group(1)}",
-                    "clean_id": order_m.group(1),
+                    "order_id": f"#{clean_id}",
+                    "clean_id": clean_id,
+                    "client_id": client_id,
                     "tista_url": tista_url,
                     "dropbox_url": dropbox_url,
+                    "raw_line": line,
                     "vendor": vendor
                 })
         return orders_to_scan
@@ -264,7 +292,7 @@ class TistaOrderDownloaderApp(ctk.CTk):
     def _run_analysis(self):
         orders = self._parse_input_tokens()
         if not orders:
-            self.after(0, lambda: messagebox.showwarning("No Orders", "Please enter at least one Tista Order URL or Order ID."))
+            self.after(0, lambda: messagebox.showwarning("No Orders", "Please enter at least one Tista Order URL, Server path, or Order ID."))
             self.after(0, lambda: self.btn_analyze.configure(state="normal"))
             return
 
@@ -273,6 +301,7 @@ class TistaOrderDownloaderApp(ctk.CTk):
         for item in orders:
             order_id = item["order_id"]
             clean_id = item["clean_id"]
+            client_id = item["client_id"]
             vendor = item["vendor"]
             tista_url = item["tista_url"]
             dropbox_url = item["dropbox_url"]
@@ -295,13 +324,18 @@ class TistaOrderDownloaderApp(ctk.CTk):
                 except Exception:
                     pass
 
-            # Sample fallback values for demonstration / offline use
-            if clean_id == "454758":
-                dropbox_button_url = "https://www.dropbox.com/home/order/5291401183317/#454758"
+            # Resolve dropbox original folder URL
+            if not dropbox_button_url:
+                if client_id:
+                    dropbox_button_url = f"https://www.dropbox.com/home/order/{client_id}/{order_id}"
+                elif clean_id == "454758":
+                    dropbox_button_url = "https://www.dropbox.com/home/order/5291401183317/#454758"
+                else:
+                    dropbox_button_url = f"https://www.dropbox.com/home/order/#{clean_id}"
+
+            # Fallback sample completed transfer for demo if none pasted
+            if not completed_link_url and clean_id == "454758":
                 completed_link_url = "https://www.dropbox.com/t/EDHPd1MvRB5h2gBV"
-                vendor = "Pixel Path"
-            elif not dropbox_button_url:
-                dropbox_button_url = f"https://www.dropbox.com/home/order/5291401183317/#{clean_id}"
 
             # Analyze folders & sizes
             folders = []
@@ -311,12 +345,23 @@ class TistaOrderDownloaderApp(ctk.CTk):
             orig_size = 0
             found_local_orig = None
 
-            for check_path in [
+            check_paths = []
+            if client_id:
+                check_paths.extend([
+                    f"A:\\order\\{client_id}\\{order_id}",
+                    f"A:\\order\\{client_id}\\{clean_id}",
+                    f"\\order\\{client_id}\\{order_id}",
+                    f"\\order\\{client_id}\\{clean_id}"
+                ])
+            # Fallback search path
+            check_paths.extend([
                 f"A:\\order\\5291401183317\\{order_id}",
                 f"A:\\order\\5291401183317\\{clean_id}"
-            ]:
-                if os.path.exists(check_path):
-                    found_local_orig = check_path
+            ])
+
+            for cp in check_paths:
+                if os.path.exists(cp):
+                    found_local_orig = cp
                     break
 
             if found_local_orig:
@@ -379,6 +424,7 @@ class TistaOrderDownloaderApp(ctk.CTk):
             analyzed_results.append({
                 "order_id": order_id,
                 "clean_id": clean_id,
+                "client_id": client_id,
                 "vendor": vendor,
                 "tista_url": tista_url,
                 "dropbox_button_url": dropbox_button_url,
@@ -410,9 +456,10 @@ class TistaOrderDownloaderApp(ctk.CTk):
             h_row = ctk.CTkFrame(card, fg_color="transparent")
             h_row.pack(fill="x", padx=14, pady=(12, 6))
 
+            client_str = f" [Client: {order['client_id']}]" if order.get("client_id") else ""
             lbl_id = ctk.CTkLabel(
                 h_row, 
-                text=order["order_id"], 
+                text=f"{order['order_id']}{client_str}", 
                 font=ctk.CTkFont(size=16, weight="bold"),
                 text_color="#38bdf8"
             )
