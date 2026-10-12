@@ -1,26 +1,29 @@
-# Tista & Dropbox Bulk Order Downloader
+# Tista Bulk Order Downloader
 
-Windows desktop application for downloading and processing bulk Tista orders with Dropbox integration.
+Windows desktop application for downloading bulk Tista orders directly from Dropbox button folders.
 
 ## Features
 
 - **Tista Card & Dropbox Integration**:
-  - Accepts Tista Order URLs (e.g. `https://tista.app/order/5291401183317/#454758`) or Order IDs (e.g. `#454758`).
-  - Automatically identifies customer original files via the **Open files in Dropbox** button (`\order\5291401183317\#454758`).
-  - Identifies vendor completed deliveries via **Completed links** (e.g. `https://www.dropbox.com/t/...`).
-  - **Open Dropbox** button on each card to view folders in the web browser with one click.
-- **Dropbox Folder & Size Analysis**:
-  - Resolves the Dropbox `--` display to calculate real folder file count and sizes (MB/GB).
-- **Flexible File Selection**:
-  - **Own Selection (Top 5 Samples)**: Downloads top 5 sample images for rapid QC inspection without waiting for 20–23 GB archives.
-  - **Select All**: Downloads full order archive.
+  - Accepts Tista Order URLs (e.g. `https://tista.app/order/5291401183317/#454758`), Server paths (`\order\5291401183317\#454758`), or Order IDs (`#454758`).
+  - **Exclusively uses Dropbox Button**: Completely ignores extraneous Completed Transfer links, entering directly through the **Open files in Dropbox** button.
+  - **Open in Dropbox Button**: Each card has a dedicated button to open the Dropbox order folder in your default browser.
+- **Folder Breakdown & Left Responsive Checkboxes**:
+  - Scans all subfolders inside the Dropbox button location (e.g., `clipping_pix`, `pixel_path`, `Original`, etc.).
+  - Resolves Dropbox `--` display to show accurate file count and size (MB/GB).
+  - **Left-aligned responsive checkboxes** for each folder so you can tick only the folders you want to download.
+- **Own Selection Modal Window**:
+  - Click **Own Selection...** on any folder to open a checklist dialog.
+  - Select individual files, or use the **Top 5 QC (Fast)** quick button for rapid quality checks without downloading 20–23 GB archives.
+- **Default Save Location**:
+  - Defaults to `E:\Audit` (with hierarchical subfolders `{Month}\{Week}\{Vendor}\#{OrderID}\`).
 - **Smart Queue & Skip Logic**:
   - Individual **Download Order** button for selective processing.
-  - Master **Download All Queued Orders** button with real-time progress bar.
-  - Automatically skips orders already running or completed so existing jobs are not interrupted or duplicated.
+  - Master **Download All Queued Orders** button with a real-time progress bar.
+  - Automatically skips orders already running or completed.
 - **Automated Extraction & Verification**:
-  - Automatically extracts `.zip` archives into `{Save Location}/{Date}/{Vendor}/#{OrderID}/Completed/`.
-  - Verifies file count and integrity.
+  - Automatically unzips downloaded archives into `E:\Audit\{Month}\{Week}\{Vendor}\#{OrderID}\`.
+  - Verifies file integrity and count.
   - Safely deletes temporary `.zip` files upon 100% verification.
 
 ## How to Run
@@ -31,15 +34,10 @@ Double-click `OrderDownloader.exe` in the root folder. No Python installation ne
 ### Method 2: Batch Launcher
 Double-click `run_app.bat`.
 
-### Method 3: Python Environment
+### Method 3: Python Virtual Environment
 ```bash
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
 python main.py
-```
-
-## Compilation to .EXE
-```bash
-pyinstaller --noconsole --onefile --collect-all customtkinter --name OrderDownloader main.py
 ```
